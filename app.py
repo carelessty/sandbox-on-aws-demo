@@ -327,6 +327,12 @@ async def get_code_interpreter_e2b(request: Request, user: dict = Depends(get_cu
         return RedirectResponse(url="/login", status_code=303)
     return templates.TemplateResponse("code-interpreter-e2b.html", {"request": request, "user": user})
 
+@app.get("/sandbox-lifecycle", response_class=HTMLResponse)
+async def get_sandbox_lifecycle(request: Request, user: dict = Depends(get_current_user)):
+    if not user:
+        return RedirectResponse(url="/login", status_code=303)
+    return templates.TemplateResponse("sandbox-lifecycle.html", {"request": request, "user": user})
+
 @app.get("/code-interpreter-ec2", response_class=HTMLResponse)
 async def get_code_interpreter_ec2(request: Request, user: dict = Depends(get_current_user)):
     if not user:
