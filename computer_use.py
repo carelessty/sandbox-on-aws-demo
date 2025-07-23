@@ -364,6 +364,7 @@ Please help the user effectively by observing the current state of the computer 
             
             # Try different model IDs in order of preference
             model_ids = [
+                "us.anthropic.claude-3-7-sonnet-20250219-v1:0",
                 "anthropic.claude-3-5-sonnet-20240620-v1:0",  # Claude 3.5 Sonnet (newer)
                 "anthropic.claude-3-sonnet-20240229-v1:0",    # Claude 3 Sonnet (fallback)
                 "anthropic.claude-3-haiku-20240307-v1:0"      # Claude 3 Haiku (backup)
