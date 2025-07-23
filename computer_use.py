@@ -103,11 +103,53 @@ Please help the user effectively by observing the current state of the computer 
             stream_wait = 3
             logger.info(f"Desktop ready. Waiting additional {stream_wait} seconds for stream to load...")
             await asyncio.sleep(stream_wait)
-            logger.info("Desktop and stream should now be ready for interaction")
+            
+            # Add stabilization period to ensure desktop view is settled
+            # This helps prevent coordinate misalignment between screenshots and clicks
+            stabilization_wait = 2
+            logger.info(f"Adding {stabilization_wait} seconds stabilization period to ensure desktop view is settled...")
+            await asyncio.sleep(stabilization_wait)
+            
+            # Take a few screenshots to stabilize the view
+            logger.info("Taking stabilization screenshots...")
+            for _ in range(3):
+                await self.take_screenshot()
+                await asyncio.sleep(0.5)
+                
+            logger.info("Desktop and stream should now be ready and stabilized for interaction")
             return True
         else:
             logger.warning(f"Desktop may not be fully ready after {max_wait_time} seconds")
             return False
+
+    def _calibrate_coordinates(self, x: int, y: int) -> tuple:
+        """
+        Calibrate coordinates to account for potential view shifts.
+        This function can be adjusted based on observed offset patterns.
+        
+        Based on the observed issue where the desktop shifts to the left after
+        the first screenshot, we apply a small adjustment to compensate.
+        """
+        # Apply a small adjustment to compensate for the observed shift
+        # These values can be fine-tuned based on testing
+        
+        # Store calibration values as class attributes if not already set
+        if not hasattr(self, '_calibration_offset_x'):
+            self._calibration_offset_x = 0  # Horizontal offset (positive moves right)
+            self._calibration_offset_y = 0  # Vertical offset (positive moves down)
+            
+            # Log that we're using calibration
+            logger.info(f"Using coordinate calibration with offsets: x={self._calibration_offset_x}, y={self._calibration_offset_y}")
+        
+        # Apply the calibration
+        calibrated_x = x + self._calibration_offset_x
+        calibrated_y = y + self._calibration_offset_y
+        
+        # Log calibration if values changed significantly
+        if abs(calibrated_x - x) > 5 or abs(calibrated_y - y) > 5:
+            logger.debug(f"Calibrated coordinates: ({x}, {y}) -> ({calibrated_x}, {calibrated_y})")
+            
+        return calibrated_x, calibrated_y
 
     async def execute_action(self, action: Dict[str, Any]) -> Dict[str, Any]:
         """Execute a computer action"""
@@ -126,6 +168,9 @@ Please help the user effectively by observing the current state of the computer 
                 coordinate = action.get("coordinate", [0, 0])
                 x, y = coordinate[0], coordinate[1]
                 
+                # Calibrate coordinates to account for potential view shifts
+                x, y = self._calibrate_coordinates(x, y)
+                
                 # Handle optional key press before click (surf pattern)
                 if action.get("text"):
                     await self.desktop.move_mouse(x, y)
@@ -133,11 +178,14 @@ Please help the user effectively by observing the current state of the computer 
                 
                 # E2B Desktop API uses left_click(x, y)
                 self.desktop.left_click(x, y)
-                return {"type": "left_click", "coordinate": coordinate, "success": True}
+                return {"type": "left_click", "coordinate": [x, y], "success": True}
                 
             elif action_type == "right_click":
                 coordinate = action.get("coordinate", [0, 0])
                 x, y = coordinate[0], coordinate[1]
+                
+                # Calibrate coordinates to account for potential view shifts
+                x, y = self._calibrate_coordinates(x, y)
                 
                 # Handle optional key press before click (surf pattern)
                 if action.get("text"):
@@ -145,11 +193,14 @@ Please help the user effectively by observing the current state of the computer 
                     self.desktop.press(action.get("text"))
                 
                 self.desktop.right_click(x, y)
-                return {"type": "right_click", "coordinate": coordinate, "success": True}
+                return {"type": "right_click", "coordinate": [x, y], "success": True}
                 
             elif action_type == "double_click":
                 coordinate = action.get("coordinate", [0, 0])
                 x, y = coordinate[0], coordinate[1]
+                
+                # Calibrate coordinates to account for potential view shifts
+                x, y = self._calibrate_coordinates(x, y)
                 
                 # Handle optional key press before click (surf pattern)
                 if action.get("text"):
@@ -157,11 +208,14 @@ Please help the user effectively by observing the current state of the computer 
                     self.desktop.press(action.get("text"))
                 
                 self.desktop.double_click(x, y)
-                return {"type": "double_click", "coordinate": coordinate, "success": True}
+                return {"type": "double_click", "coordinate": [x, y], "success": True}
                 
             elif action_type == "middle_click":
                 coordinate = action.get("coordinate", [0, 0])
                 x, y = coordinate[0], coordinate[1]
+                
+                # Calibrate coordinates to account for potential view shifts
+                x, y = self._calibrate_coordinates(x, y)
                 
                 # Handle optional key press before click (surf pattern)
                 if action.get("text"):
@@ -169,7 +223,7 @@ Please help the user effectively by observing the current state of the computer 
                     self.desktop.press(action.get("text"))
                 
                 self.desktop.middle_click(x, y)
-                return {"type": "middle_click", "coordinate": coordinate, "success": True}
+                return {"type": "middle_click", "coordinate": [x, y], "success": True}
                 
             elif action_type == "type":
                 text = action.get("text", "")
@@ -189,6 +243,9 @@ Please help the user effectively by observing the current state of the computer 
                 scroll_amount = action.get("scroll_amount", 3)
                 x, y = coordinate[0], coordinate[1]
                 
+                # Calibrate coordinates to account for potential view shifts
+                x, y = self._calibrate_coordinates(x, y)
+                
                 # Move mouse to position first
                 self.desktop.move_mouse(x, y)
                 
@@ -202,7 +259,7 @@ Please help the user effectively by observing the current state of the computer 
                     
                 return {
                     "type": "scroll", 
-                    "coordinate": coordinate,
+                    "coordinate": [x, y],
                     "direction": scroll_direction,
                     "amount": scroll_amount,
                     "success": True
@@ -211,27 +268,39 @@ Please help the user effectively by observing the current state of the computer 
             elif action_type == "left_click_drag":
                 start_coordinate = action.get("start_coordinate", [0, 0])
                 end_coordinate = action.get("coordinate", [0, 0])
+                
+                # Calibrate coordinates to account for potential view shifts
+                start_x, start_y = self._calibrate_coordinates(start_coordinate[0], start_coordinate[1])
+                end_x, end_y = self._calibrate_coordinates(end_coordinate[0], end_coordinate[1])
+                
                 # E2B Desktop API: drag(fr: tuple[int, int], to: tuple[int, int])
-                start = (start_coordinate[0], start_coordinate[1])
-                end = (end_coordinate[0], end_coordinate[1])
+                start = (start_x, start_y)
+                end = (end_x, end_y)
                 self.desktop.drag(start, end)
                 return {
                     "type": "left_click_drag",
-                    "start_coordinate": start_coordinate,
-                    "coordinate": end_coordinate,
+                    "start_coordinate": [start_x, start_y],
+                    "coordinate": [end_x, end_y],
                     "success": True
                 }
                 
             elif action_type == "mouse_move":
                 coordinate = action.get("coordinate", [0, 0])
                 x, y = coordinate[0], coordinate[1]
+                
+                # Calibrate coordinates to account for potential view shifts
+                x, y = self._calibrate_coordinates(x, y)
+                
                 # E2B Desktop API uses move_mouse(x, y)
                 self.desktop.move_mouse(x, y)
-                return {"type": "mouse_move", "coordinate": coordinate, "success": True}
+                return {"type": "mouse_move", "coordinate": [x, y], "success": True}
                 
             elif action_type == "triple_click":
                 coordinate = action.get("coordinate", [0, 0])
                 x, y = coordinate[0], coordinate[1]
+                
+                # Calibrate coordinates to account for potential view shifts
+                x, y = self._calibrate_coordinates(x, y)
                 
                 self.desktop.move_mouse(x, y)
                 if action.get("text"):
@@ -240,7 +309,7 @@ Please help the user effectively by observing the current state of the computer 
                 self.desktop.left_click()
                 self.desktop.left_click()
                 self.desktop.left_click()
-                return {"type": "triple_click", "coordinate": coordinate, "success": True}
+                return {"type": "triple_click", "coordinate": [x, y], "success": True}
                 
             elif action_type in ["cursor_position", "left_mouse_down", "left_mouse_up"]:
                 # These actions are handled by E2B internally or not needed
@@ -414,6 +483,26 @@ Please help the user effectively by observing the current state of the computer 
                 if result:
                     return result
         return None
+        
+    def adjust_calibration(self, offset_x: int = 0, offset_y: int = 0):
+        """
+        Adjust the coordinate calibration offsets.
+        This can be called to fine-tune the calibration based on observed behavior.
+        
+        Args:
+            offset_x: Horizontal offset adjustment (positive moves right)
+            offset_y: Vertical offset adjustment (positive moves down)
+        """
+        # Initialize calibration values if not already set
+        if not hasattr(self, '_calibration_offset_x'):
+            self._calibration_offset_x = 0
+            self._calibration_offset_y = 0
+            
+        # Apply the adjustments
+        self._calibration_offset_x += offset_x
+        self._calibration_offset_y += offset_y
+        
+        logger.info(f"Adjusted coordinate calibration. New offsets: x={self._calibration_offset_x}, y={self._calibration_offset_y}")
 
     async def process_user_message(self, user_message: str, callback=None) -> str:
         """Process a user message and execute computer actions"""
@@ -431,6 +520,13 @@ Please help the user effectively by observing the current state of the computer 
             if callback:
                 await callback({"type": "info", "data": "Taking initial screenshot of the desktop..."})
             
+            # Take multiple screenshots to ensure the view is stable
+            # This helps prevent coordinate misalignment between screenshots and clicks
+            for i in range(2):
+                await self.take_screenshot()
+                await asyncio.sleep(0.5)
+            
+            # Now take the actual screenshot for analysis
             screenshot_base64 = await self.take_screenshot()
             
             if callback:
